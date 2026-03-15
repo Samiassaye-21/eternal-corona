@@ -58,7 +58,7 @@ function exportExpensesCSV(expenses) {
 
 // ─── Main Component ───
 export default function FinancialTracker({ store }) {
-    const { sales, expenses, inventory, usage, actions } = store;
+    const { sales, expenses, inventory, usage, actions, currentUser } = store;
     const [activeView, setActiveView] = useState('sales');
     const [resolvingSale, setResolvingSale] = useState(null);
     const [dateFilter, setDateFilter] = useState('all');
@@ -177,12 +177,31 @@ export default function FinancialTracker({ store }) {
                 ))}
             </div>
 
+            {/* Pending Balances by Employee Summary */}
+            {Object.keys(store.metrics.pendingByEmployee || {}).length > 0 && (
+                <div className="glass-panel" style={{ padding: '1.5rem', borderLeft: '4px solid var(--accent-orange)' }}>
+                    <div className="flex items-center gap-2 mb-4">
+                        <User size={20} color="var(--accent-orange)" />
+                        <h3>Pending Balances by Employee</h3>
+                    </div>
+                    <div className="flex gap-4" style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                        {Object.values(store.metrics.pendingByEmployee).map(employee => (
+                            <div key={employee.name} style={{ background: 'rgba(249, 115, 22, 0.1)', padding: '1rem', borderRadius: '12px', minWidth: '180px', border: '1px solid rgba(249, 115, 22, 0.2)' }}>
+                                <p style={{ fontWeight: 'bold', color: 'white', marginBottom: '0.25rem' }}>{employee.name}</p>
+                                <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--accent-orange)' }}>{employee.totalPendingCups} Cups</p>
+                                <p style={{ fontSize: '0.875rem', color: 'var(--text-secondary)' }}>${employee.totalPendingAmount.toLocaleString()}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '1.5rem' }}>
 
                 {/* Entry Form */}
                 <div className="glass-panel" style={{ padding: '1.5rem', height: 'fit-content' }}>
                     {activeView === 'sales' ? (
-                        <SaleForm onAdd={actions.addSale} inventory={inventory} />
+                        <SaleForm onAdd={actions.addSale} inventory={inventory} currentUser={currentUser} />
                     ) : activeView === 'expenses' ? (
                         <ExpenseForm onAdd={actions.addExpense} />
                     ) : (
@@ -230,6 +249,7 @@ export default function FinancialTracker({ store }) {
                                             <div className="flex gap-4 mt-1" style={{ fontSize: '0.75rem', marginTop: '0.5rem' }}>
                                                 <span style={{ color: 'var(--text-secondary)' }}>Cash: <strong style={{ color: 'var(--text-primary)' }}>${sale.cash || 0}</strong></span>
                                                 <span style={{ color: 'var(--text-secondary)' }}>Transfer: <strong style={{ color: 'var(--text-primary)' }}>${sale.transfer || 0}</strong></span>
+                                                <span style={{ color: 'var(--text-secondary)' }}>Total Paid: <strong style={{ color: 'var(--accent-green)' }}>${((sale.cash || 0) + (sale.transfer || 0)).toFixed(2)}</strong></span>
                                                 {(sale.pendingCups || 0) > 0 && <span style={{ color: 'var(--accent-orange)' }}>Pending: <strong>{sale.pendingCups} cups (${(sale.pendingCups * 170).toLocaleString()})</strong></span>}
                                                 {sale.dailyExpense > 0 && <span style={{ color: 'var(--accent-purple)' }}>Shift Expense: <strong>${sale.dailyExpense}</strong></span>}
                                             </div>
@@ -348,10 +368,10 @@ export default function FinancialTracker({ store }) {
 }
 
 // ─── Sale Form ───
-function SaleForm({ onAdd, inventory }) {
+function SaleForm({ onAdd, inventory, currentUser }) {
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [shift, setShift] = useState('Day');
-    const [employee, setEmployee] = useState('');
+    const [employee, setEmployee] = useState(currentUser?.name || '');
     const [cupsUsed, setCupsUsed] = useState('');
     const [beuCups, setBeuCups] = useState('');
     const [pendingCups, setPendingCups] = useState('');
@@ -398,13 +418,14 @@ function SaleForm({ onAdd, inventory }) {
         onAdd({
             date,
             shift,
-            employee: employee.trim(),
+            employee: (employee || currentUser?.name || '').trim(),
             cupsUsed: Number(cupsUsed),
             beuCups: Number(beuCups),
             juicesSold,
             amount,
             cash: cashNum,
             transfer: transferNum,
+            totalPaid,
             pendingCups: pendingCupsNum,
             dailyExpense: expenseNum,
             ingredientsUsed: { ...ingredientUsage }
@@ -441,15 +462,17 @@ function SaleForm({ onAdd, inventory }) {
                 </div>
             </div>
 
-            <div className="input-group">
-                <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <User size={14} /> Employee Name
-                </label>
-                <input
-                    className="input-field" type="text"
-                    value={employee} onChange={e => setEmployee(e.target.value)}
-                    placeholder="e.g. Abebe, Sara"
-                />
+            <div className="flex gap-4">
+                <div className="input-group" style={{ flex: 1 }}>
+                    <label className="input-label" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <User size={14} /> Employee Name
+                    </label>
+                    <input
+                        className="input-field" type="text"
+                        value={employee} onChange={e => setEmployee(e.target.value)}
+                        placeholder="e.g. Abebe"
+                    />
+                </div>
             </div>
 
             <div className="flex gap-4">
@@ -535,6 +558,15 @@ function SaleForm({ onAdd, inventory }) {
                         value={transfer} onChange={e => setTransfer(e.target.value)}
                         placeholder="0"
                     />
+                </div>
+            </div>
+
+            <div style={{ background: 'rgba(132, 204, 22, 0.1)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--accent-green-glow)' }}>
+                <div className="flex justify-between items-center">
+                    <span style={{ fontWeight: '500', color: 'var(--text-secondary)' }}>Total Paid Received</span>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--accent-green)' }}>
+                        ${totalPaid.toFixed(2)}
+                    </span>
                 </div>
             </div>
 
@@ -803,6 +835,7 @@ function DailyReportPrintView({ sales }) {
     const today = new Date().toISOString().split('T')[0];
     const todaysSales = sales.filter(s => s.date === today);
 
+    // Derived metrics for print
     const metrics = todaysSales.reduce((acc, sale) => {
         acc.totalRevenue += Number(sale.amount) || 0;
         acc.totalCash += Number(sale.cash) || 0;
@@ -818,103 +851,139 @@ function DailyReportPrintView({ sales }) {
         return acc;
     }, { totalRevenue: 0, totalCash: 0, totalTransfer: 0, totalPendingCups: 0, totalCups: 0, totalBeu: 0, totalExpense: 0, dayCups: 0, nightCups: 0 });
 
+    const totalPaid = metrics.totalCash + metrics.totalTransfer;
     const totalPendingAmount = metrics.totalPendingCups * 170;
 
+    // Group pending by employee for the print report
+    const pendingByEmployee = todaysSales.reduce((acc, sale) => {
+        if ((sale.pendingCups || 0) > 0 && sale.employee) {
+            const name = sale.employee.trim();
+            acc[name] = (acc[name] || 0) + sale.pendingCups;
+        }
+        return acc;
+    }, {});
+
     return (
-        <div className="print-show" style={{ display: 'none', padding: '2rem', color: 'black' }}>
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid black', paddingBottom: '1rem', marginBottom: '2rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                    <img src="/maraki-logo.png" alt="Logo" style={{ height: '50px' }} />
-                    <h1 style={{ margin: 0, color: 'black' }}>Maraki Juice</h1>
+        <div className="print-show" style={{ display: 'none', padding: '1in', color: '#1a1a1a', background: 'white', fontFamily: '"Inter", sans-serif' }}>
+            {/* Elegant Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #f97316', paddingBottom: '2rem', marginBottom: '3rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+                    <div style={{ background: '#f97316', padding: '10px', borderRadius: '12px' }}>
+                        <img src="/maraki-logo.png" alt="Logo" style={{ height: '60px', width: 'auto', filter: 'brightness(1.2)' }} />
+                    </div>
+                    <div>
+                        <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '800', color: '#111', letterSpacing: '-0.05em' }}>MARAKI JUICE</h1>
+                        <p style={{ margin: '0.25rem 0 0 0', color: '#666', fontSize: '1rem', fontWeight: '500' }}>Premium Freshness Dashboard</p>
+                    </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <h2 style={{ margin: 0, color: 'black' }}>Daily Income Report</h2>
-                    <p style={{ margin: 0, color: 'black' }}>Date: {new Date(today).toLocaleDateString()}</p>
+                    <h2 style={{ margin: 0, fontSize: '1.5rem', fontWeight: '700', color: '#f97316' }}>DAILY FINANCIAL REPORT</h2>
+                    <p style={{ margin: '0.5rem 0 0 0', color: '#333', fontSize: '1.1rem', fontWeight: '600' }}>{new Date(today).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                 </div>
             </div>
 
-            {/* Metrics Summary Grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Total Expected Revenue</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0' }}>${metrics.totalRevenue.toFixed(2)}</h2>
+            {/* Premium Summary Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '1.5rem', marginBottom: '2rem' }}>
+                <SummaryCard title="Total Expected" value={`$${metrics.totalRevenue.toLocaleString()}`} color="#f97316" sub={`From ${metrics.totalCups - metrics.totalBeu} Juices`} />
+                <SummaryCard title="Total Collected" value={`$${totalPaid.toLocaleString()}`} color="#84cc16" sub={`Cash + Transfer`} />
+                <SummaryCard title="Shift Expenses" value={`$${metrics.totalExpense.toLocaleString()}`} color="#ef4444" sub={`Logged by Staff`} />
+                <SummaryCard title="Pending Amount" value={`$${totalPendingAmount.toLocaleString()}`} color="#3b82f6" sub={`${metrics.totalPendingCups} Cups Owed`} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '2rem', marginBottom: '3rem' }}>
+                {/* Payment Breakdown */}
+                <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>Payment Distribution</h3>
+                    <div className="flex justify-between" style={{ marginBottom: '1rem' }}>
+                        <span style={{ color: '#64748b', fontWeight: '500' }}>Cash Received:</span>
+                        <span style={{ color: '#1e293b', fontWeight: '700' }}>${metrics.totalCash.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between" style={{ marginBottom: '1rem' }}>
+                        <span style={{ color: '#64748b', fontWeight: '500' }}>Transfer Received:</span>
+                        <span style={{ color: '#1e293b', fontWeight: '700' }}>${metrics.totalTransfer.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between" style={{ borderTop: '2px dashed #cbd5e1', paddingTop: '1rem', marginTop: '1rem' }}>
+                        <span style={{ color: '#1e293b', fontWeight: '800' }}>Net Register Cash:</span>
+                        <span style={{ color: '#84cc16', fontWeight: '800', fontSize: '1.25rem' }}>${(metrics.totalCash - metrics.totalExpense).toLocaleString()}</span>
+                    </div>
                 </div>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Cash Received</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0' }}>${metrics.totalCash.toFixed(2)}</h2>
-                </div>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Transfers Received</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0' }}>${metrics.totalTransfer.toFixed(2)}</h2>
-                </div>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Pending ({metrics.totalPendingCups} cups)</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0', color: totalPendingAmount > 0 ? 'red' : 'black' }}>${totalPendingAmount.toFixed(2)}</h2>
+
+                {/* Inventory Snapshot */}
+                <div style={{ background: '#f8fafc', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e2e8f0' }}>
+                    <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#1e293b', borderBottom: '1px solid #e2e8f0', paddingBottom: '0.5rem' }}>Inventory Summary</h3>
+                    <div className="flex justify-between" style={{ marginBottom: '0.75rem' }}>
+                        <span style={{ color: '#64748b' }}>Total Cups Used:</span>
+                        <span style={{ fontWeight: '600' }}>{metrics.totalCups}</span>
+                    </div>
+                    <div className="flex justify-between" style={{ marginBottom: '0.75rem' }}>
+                        <span style={{ color: '#64748b' }}>Day Shift:</span>
+                        <span style={{ fontWeight: '600' }}>{metrics.dayCups}</span>
+                    </div>
+                    <div className="flex justify-between" style={{ marginBottom: '0.75rem' }}>
+                        <span style={{ color: '#64748b' }}>Night Shift:</span>
+                        <span style={{ fontWeight: '600' }}>{metrics.nightCups}</span>
+                    </div>
+                    <div className="flex justify-between" style={{ color: '#ef4444' }}>
+                        <span>Wasted (Beu):</span>
+                        <span style={{ fontWeight: '700' }}>{metrics.totalBeu}</span>
+                    </div>
                 </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem', marginBottom: '2rem' }}>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px', background: '#ffe4e6' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Total Shift Expenses</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0', color: '#e11d48' }}>${metrics.totalExpense.toFixed(2)}</h2>
+            {/* Pending Balances Section - Premium List */}
+            {Object.keys(pendingByEmployee).length > 0 && (
+                <div style={{ marginBottom: '3rem' }}>
+                    <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{ width: '8px', height: '24px', background: '#3b82f6', borderRadius: '4px' }}></div>
+                        Pending Balances by Employee
+                    </h3>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+                        {Object.entries(pendingByEmployee).map(([name, cups]) => (
+                            <div key={name} style={{ border: '1px solid #3b82f633', background: '#3b82f605', padding: '1rem', borderRadius: '12px', display: 'flex', justifycontent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: '600', color: '#1e293b' }}>{name}</span>
+                                <div style={{ textAlign: 'right' }}>
+                                    <div style={{ fontWeight: '800', color: '#3b82f6' }}>{cups} Cups</div>
+                                    <div style={{ fontSize: '0.8rem', color: '#64748b' }}>${(cups * 170).toLocaleString()}</div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
                 </div>
-                <div style={{ padding: '1rem', border: '1px solid #ccc', borderRadius: '8px', background: '#ecfdf5' }}>
-                    <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold' }}>Net Cash in Register (Cash - Expense)</p>
-                    <h2 style={{ margin: '0.5rem 0 0 0', color: '#059669' }}>${(metrics.totalCash - metrics.totalExpense).toFixed(2)}</h2>
-                </div>
-            </div>
+            )}
 
-            {/* Inventory Usage */}
-            <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Inventory Usage</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '2rem' }}>
+            {/* Detailed Transaction Table */}
+            <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.25rem', color: '#1e293b' }}>Detailed Shift Logs</h3>
+            <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: '0', borderRadius: '12px', overflow: 'hidden', border: '1px solid #e2e8f0' }}>
                 <thead>
-                    <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Total Cups Used</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Day Shift Cups</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Night Shift Cups</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Wasted (Beu) Cups</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ccc', fontWeight: 'bold' }}>{metrics.totalCups}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{metrics.dayCups}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{metrics.nightCups}</td>
-                        <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{metrics.totalBeu}</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            {/* Detailed Log */}
-            <h3 style={{ borderBottom: '1px solid #eee', paddingBottom: '0.5rem', marginBottom: '1rem' }}>Shift Logs</h3>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                    <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Shift</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Employee</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Cups - Beu</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Total $</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Cash</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Transfer</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Expense</th>
-                        <th style={{ padding: '0.75rem', border: '1px solid #ccc' }}>Pending Cups</th>
+                    <tr style={{ background: '#1e293b' }}>
+                        <th style={{ padding: '1rem', textAlign: 'left', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>SHIFT</th>
+                        <th style={{ padding: '1rem', textAlign: 'left', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>EMPLOYEE</th>
+                        <th style={{ padding: '1rem', textAlign: 'center', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>CUPS (Beu)</th>
+                        <th style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>REVENUE</th>
+                        <th style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>PAID (C/T)</th>
+                        <th style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>EXPENSE</th>
+                        <th style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: '600', fontSize: '0.85rem' }}>PENDING</th>
                     </tr>
                 </thead>
                 <tbody>
                     {todaysSales.length === 0 ? (
-                        <tr><td colSpan="8" style={{ padding: '1rem', textAlign: 'center', border: '1px solid #ccc' }}>No sales logged today.</td></tr>
+                        <tr><td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: '#64748b' }}>No transaction data available for today.</td></tr>
                     ) : (
-                        todaysSales.map(sale => (
-                            <tr key={sale.id}>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{sale.shift}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{sale.employee || '—'}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>{sale.cupsUsed} - {sale.beuCups}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc', fontWeight: 'bold' }}>${sale.amount.toFixed(2)}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>${(sale.cash || 0).toFixed(2)}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc' }}>${(sale.transfer || 0).toFixed(2)}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc', color: 'red' }}>${(sale.dailyExpense || 0).toFixed(2)}</td>
-                                <td style={{ padding: '0.75rem', border: '1px solid #ccc', color: (sale.pendingCups || 0) > 0 ? 'red' : 'inherit' }}>
+                        todaysSales.map((sale, idx) => (
+                            <tr key={sale.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc' }}>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', fontWeight: '600' }}>{sale.shift.toUpperCase()}</td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9' }}>
+                                    <div style={{ fontWeight: '600', color: '#1e293b' }}>{sale.employee || 'Staff'}</div>
+                                </td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', textAlign: 'center' }}>
+                                    {sale.cupsUsed} <span style={{ color: '#ef4444', fontSize: '0.8rem' }}>({sale.beuCups})</span>
+                                </td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: '700' }}>${sale.amount.toLocaleString()}</td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontSize: '0.85rem' }}>
+                                    ${(sale.cash || 0).toLocaleString()} / ${(sale.transfer || 0).toLocaleString()}
+                                </td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', textAlign: 'right', color: '#ef4444' }}>${(sale.dailyExpense || 0).toLocaleString()}</td>
+                                <td style={{ padding: '1rem', borderBottom: '1px solid #f1f5f9', textAlign: 'right', color: (sale.pendingCups || 0) > 0 ? '#3b82f6' : '#94a3b8', fontWeight: (sale.pendingCups || 0) > 0 ? '700' : '400' }}>
                                     {sale.pendingCups || 0} cups
                                 </td>
                             </tr>
@@ -923,10 +992,33 @@ function DailyReportPrintView({ sales }) {
                 </tbody>
             </table>
 
-            <div style={{ marginTop: '4rem', display: 'flex', justifyContent: 'space-between' }}>
-                <div style={{ borderTop: '1px solid black', width: '200px', textAlign: 'center', paddingTop: '0.5rem' }}>Manager Signature</div>
-                <div style={{ borderTop: '1px solid black', width: '200px', textAlign: 'center', paddingTop: '0.5rem' }}>Date</div>
+            {/* Signatures */}
+            <div style={{ marginTop: '5rem', display: 'flex', justifyContent: 'space-between', padding: '0 2rem' }}>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ borderBottom: '2px solid #333', width: '250px', marginBottom: '0.75rem' }}></div>
+                    <p style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>Authorized Manager Signature</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>Operations Verification</p>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                    <div style={{ borderBottom: '2px solid #333', width: '250px', marginBottom: '0.75rem' }}></div>
+                    <p style={{ margin: 0, fontWeight: '700', color: '#1e293b' }}>Record Date</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>{new Date().toLocaleTimeString()}</p>
+                </div>
             </div>
+
+            <div style={{ marginTop: '4rem', textAlign: 'center', borderTop: '1px solid #e2e8f0', paddingTop: '2rem' }}>
+                <p style={{ margin: 0, color: '#94a3b8', fontSize: '0.85rem' }}>Maraki Juice Internal Document • Confidential Financial Data</p>
+            </div>
+        </div>
+    );
+}
+
+function SummaryCard({ title, value, color, sub }) {
+    return (
+        <div style={{ border: `1px solid ${color}33`, background: `${color}05`, padding: '1.25rem', borderRadius: '16px' }}>
+            <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: '600', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</p>
+            <h2 style={{ margin: '0.5rem 0', fontSize: '1.75rem', fontWeight: '800', color: color }}>{value}</h2>
+            <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '500', color: '#94a3b8' }}>{sub}</p>
         </div>
     );
 }

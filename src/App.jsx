@@ -4,11 +4,16 @@ import Dashboard from './components/Dashboard';
 import InventoryManager from './components/InventoryManager';
 import FinancialTracker from './components/FinancialTracker';
 import Analytics from './components/Analytics';
+import Auth from './components/Auth';
 import { useStore } from './hooks/useStore';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const store = useStore();
+
+  if (!store.currentUser) {
+    return <Auth onLogin={store.actions.login} />;
+  }
 
   const renderContent = () => {
     switch (activeTab) {
@@ -32,7 +37,7 @@ function App() {
   };
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab}>
+    <Layout activeTab={activeTab} setActiveTab={setActiveTab} store={store}>
       {renderContent()}
     </Layout>
   );

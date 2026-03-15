@@ -1,6 +1,6 @@
 import { LayoutDashboard, PackageOpen, DollarSign, BarChart3, Settings } from 'lucide-react';
 
-export default function Layout({ children, activeTab, setActiveTab }) {
+export default function Layout({ children, activeTab, setActiveTab, store }) {
     const navItems = [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
         { id: 'inventory', label: 'Inventory', icon: PackageOpen },
@@ -42,19 +42,13 @@ export default function Layout({ children, activeTab, setActiveTab }) {
                     </div>
 
                     <div className="flex items-center gap-4">
-                        <button className="glass-panel" style={{ padding: '0.5rem 1rem', borderRadius: '20px' }}>
-                            + New Sale
-                        </button>
-                        <div
-                            style={{
-                                width: '40px', height: '40px', borderRadius: '50%',
-                                background: 'linear-gradient(45deg, var(--accent-orange), var(--accent-purple))',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontWeight: 'bold', border: '2px solid rgba(255,255,255,0.2)'
-                            }}
-                        >
-                            JB
-                        </div>
+                        {store?.currentUser && (
+                            <div className="glass-panel" style={{ padding: '0.4rem 0.9rem', borderRadius: '999px', fontSize: '0.85rem' }}>
+                                <span style={{ opacity: 0.8 }}>Signed in as</span>{' '}
+                                <strong>{store.currentUser.name}</strong>
+                                {store.currentUser.role ? ` (${store.currentUser.role})` : null}
+                            </div>
+                        )}
                     </div>
                 </header>
 

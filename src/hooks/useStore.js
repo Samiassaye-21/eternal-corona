@@ -42,6 +42,10 @@ export function useStore() {
     const [expenses, setExpenses] = useState(initialExpenses);
     const [usage, setUsage] = useState(initialUsage);
     const [isLoaded, setIsLoaded] = useState(false);
+    const [currentUser, setCurrentUser] = useState(() => {
+        const saved = typeof window !== 'undefined' ? localStorage.getItem('juicify_user') : null;
+        return saved ? JSON.parse(saved) : null;
+    });
 
     // Load from Supabase (if configured) or fall back to localStorage once
     useEffect(() => {
@@ -121,6 +125,12 @@ export function useStore() {
         }
     }, [usage]);
 
+    useEffect(() => {
+        if (currentUser) {
+            localStorage.setItem('juicify_user', JSON.stringify(currentUser));
+        }
+    }, [currentUser]);
+
     // Derived metrics
     const totalJuicesSold = sales.reduce((sum, sale) => sum + (sale.juicesSold || 0), 0);
     const totalIncome = sales.reduce((sum, sale) => sum + (sale.amount || 0), 0);
@@ -129,10 +139,27 @@ export function useStore() {
     const totalExpenses = expenses.reduce((sum, exp) => sum + (exp.amount || 0), 0);
     const totalShiftExpenses = sales.reduce((sum, sale) => sum + (sale.dailyExpense || 0), 0);
     const netProfit = totalIncome - totalExpenses - totalShiftExpenses;
+    const pendingByEmployee = sales.reduce((acc, sale) => {
+        if ((sale.pendingCups || 0) > 0 && sale.employee) {
+            const name = sale.employee.trim();
+            if (!acc[name]) {
+                acc[name] = { name, totalPendingCups: 0, totalPendingAmount: 0, sales: [] };
+            }
+            acc[name].totalPendingCups += sale.pendingCups;
+            acc[name].totalPendingAmount += sale.pendingCups * 170;
+            acc[name].sales.push(sale);
+        }
+        return acc;
+    }, {});
 
     // Actions
     const addSale = (sale) => {
-        const row = { id: Date.now().toString(), ...sale };
+        const row = {
+            id: Date.now().toString(),
+            ...sale,
+            employee: sale.employee || (currentUser ? currentUser.name : ''),
+            userId: currentUser ? currentUser.name : null,
+        };
         setSales(prev => [row, ...prev]);
 
         if (supabase) {
@@ -180,7 +207,11 @@ export function useStore() {
     };
 
     const addExpense = (expense) => {
-        const row = { id: Date.now().toString(), ...expense };
+        const row = {
+            id: Date.now().toString(),
+            ...expense,
+            userId: currentUser ? currentUser.name : null,
+        };
         setExpenses(prev => [row, ...prev]);
         if (supabase) {
             supabase.from('expenses').insert(row).then().catch(console.error);
@@ -188,7 +219,11 @@ export function useStore() {
     };
 
     const addUsage = (usageRecord) => {
-        const record = { id: Date.now().toString(), ...usageRecord };
+        const record = {
+            id: Date.now().toString(),
+            ...usageRecord,
+            userId: currentUser ? currentUser.name : null,
+        };
         setUsage(prev => [record, ...prev]);
 
         if (supabase) {
@@ -249,7 +284,15 @@ export function useStore() {
     };
 
     const addInventoryItem = (item) => {
-        const row = { id: Date.now().toString(), used: 0, wasted: 0, lowThreshold: 5, emoji: '📦', ...item };
+        const row = {
+            id: Date.now().toString(),
+            used: 0,
+            wasted: 0,
+            lowThreshold: 5,
+            emoji: '📦',
+            ...item,
+            createdBy: currentUser ? currentUser.name : null,
+        };
         setInventory(prev => [...prev, row]);
         if (supabase) {
             supabase.from('inventory').insert(row).then().catch(console.error);
@@ -263,11 +306,22 @@ export function useStore() {
         }
     };
 
+    const login = (user) => {
+        setCurrentUser(user);
+    };
+
+    const logout = () => {
+        setCurrentUser(null);
+        localStorage.removeItem('juicify_user');
+    };
+
     return {
         inventory,
         sales,
         expenses,
         usage,
+        currentUser,
+        isLoaded,
         metrics: {
             totalJuicesSold,
             totalIncome,
@@ -275,7 +329,8 @@ export function useStore() {
             totalPendingAmount,
             totalExpenses,
             totalShiftExpenses,
-            netProfit
+            netProfit,
+            pendingByEmployee
         },
         actions: {
             addSale,
@@ -284,7 +339,9 @@ export function useStore() {
             resolvePendingSale,
             updateInventory,
             addInventoryItem,
-            deleteInventoryItem
+            deleteInventoryItem,
+            login,
+            logout
         }
     };
 }
